@@ -319,6 +319,113 @@ class TestMarker:
         assert hash(Marker(marker_string)) == hash(Marker(expected))
 
     @pytest.mark.parametrize(
+        ("marker_source", "expected_serialized", "evaluations"),
+        [
+            pytest.param(
+                'os_name == "posix"',
+                'os_name == "posix"',
+                [({"os_name": "posix"}, True), ({"os_name": "nt"}, False)],
+                id="plain-string-needs-no-escaping",
+            ),
+            pytest.param(
+                r'os_name == "a\\b"',
+                r'os_name == "a\\b"',
+                [
+                    ({"os_name": r"a\b"}, True),
+                    ({"os_name": "a\x08b"}, False),
+                ],
+                id="single-backslash-is-doubled-on-serialize",
+            ),
+            pytest.param(
+                "os_name == 'a\"b'",
+                "os_name == 'a\"b'",
+                [({"os_name": 'a"b'}, True), ({"os_name": "a"}, False)],
+                id="double-quote-in-value-keeps-single-quotes",
+            ),
+            pytest.param(
+                'os_name == "a\'b"',
+                'os_name == "a\'b"',
+                [({"os_name": "a'b"}, True), ({"os_name": "a"}, False)],
+                id="single-quote-in-value-keeps-double-quotes",
+            ),
+            pytest.param(
+                r'os_name == "a\\\\b"',
+                r'os_name == "a\\\\b"',
+                [
+                    ({"os_name": r"a\\b"}, True),
+                    ({"os_name": r"a\b"}, False),
+                ],
+                id="consecutive-backslashes-all-escaped",
+            ),
+            pytest.param(
+                'os_name == ""',
+                'os_name == ""',
+                [({"os_name": ""}, True), ({"os_name": "x"}, False)],
+                id="empty-string-roundtrips",
+            ),
+            pytest.param(
+                'os_name == "caf\u00e9-\u65e5\u672c\u8a9e"',
+                'os_name == "caf\u00e9-\u65e5\u672c\u8a9e"',
+                [
+                    ({"os_name": "caf\u00e9-\u65e5\u672c\u8a9e"}, True),
+                    ({"os_name": "cafe"}, False),
+                ],
+                id="unicode-value-roundtrips",
+            ),
+            pytest.param(
+                r'(os_name == "a\\b" or os_name == "other") '
+                r'and python_version >= "3.8"',
+                r'(os_name == "a\\b" or os_name == "other") '
+                r'and python_version >= "3.8"',
+                [
+                    (
+                        {"os_name": r"a\b", "python_version": "3.10"},
+                        True,
+                    ),
+                    (
+                        {"os_name": "other", "python_version": "3.10"},
+                        True,
+                    ),
+                    (
+                        {"os_name": "nope", "python_version": "3.10"},
+                        False,
+                    ),
+                    (
+                        {"os_name": r"a\b", "python_version": "3.7"},
+                        False,
+                    ),
+                ],
+                id="nested-and-or-with-backslash-roundtrips",
+            ),
+        ],
+    )
+    def test_serialize_escaping_roundtrips_structure_and_evaluation(
+        self,
+        marker_source: str,
+        expected_serialized: str,
+        evaluations: list[tuple[dict[str, str], bool]],
+    ) -> None:
+        # Regression: serializing a Value did not escape backslashes, so
+        # str(Marker) could re-parse to a different value (e.g. "\b" became a
+        # backspace) or fail to parse outright (a trailing "\" escaped the
+        # closing quote).
+        marker = Marker(marker_source)
+
+        # The serialized form must match the exact expected output.
+        assert str(marker) == expected_serialized
+
+        # Re-parsing the serialized form must preserve the structure...
+        reparsed = Marker(str(marker))
+        assert str(reparsed) == str(marker)
+        assert reparsed == marker
+
+        # ...and the real evaluation result in each environment, not merely
+        # avoid raising.
+        for environment, expected in evaluations:
+            assert marker.evaluate(environment) is expected
+            assert reparsed.evaluate(environment) is expected
+
+    @pytest.mark.parametrize(
         ("example1", "example2"),
         [
             # Test trivial comparisons.

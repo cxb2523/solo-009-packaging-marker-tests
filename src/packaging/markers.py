@@ -204,6 +204,15 @@ def _normalize_extra_values(results: MarkerList) -> MarkerList:
     return [_normalize_extras(r) for r in results]
 
 
+def _serialize_node(node: Variable | Op | Value) -> str:
+    if isinstance(node, Value):
+        # Escape backslashes so the serialized form re-parses to the same
+        # value; otherwise, "\b" re-parses as a backspace and a trailing "\"
+        # escapes the closing quote.
+        return Value(node.value.replace("\\", "\\\\")).serialize()
+    return node.serialize()
+
+
 def _format_marker(
     marker: list[str] | MarkerAtom | str, first: bool | None = True
 ) -> str:
@@ -225,7 +234,7 @@ def _format_marker(
         else:
             return "(" + " ".join(inner) + ")"
     elif isinstance(marker, tuple):
-        return " ".join([m.serialize() for m in marker])
+        return " ".join(_serialize_node(m) for m in marker)
     else:
         return marker
 
