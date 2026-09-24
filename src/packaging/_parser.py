@@ -69,10 +69,11 @@ class Value(Node):
 
     def serialize(self) -> str:
         value = str(self)
+        escaped = value.replace("\\", "\\\\")
         if '"' not in value:
-            return f'"{value}"'
+            return f'"{escaped}"'
         if "'" not in value:
-            return f"'{value}'"
+            return f"'{escaped}'"
         raise ValueError(
             "Cannot serialize marker value containing both quote characters"
         )

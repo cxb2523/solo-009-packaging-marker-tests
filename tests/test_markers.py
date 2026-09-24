@@ -100,6 +100,75 @@ class TestNode:
             Value("a\"b'c").serialize()
 
 
+class TestMarkerSerializeParseRoundTrip:
+    @pytest.mark.parametrize(
+        ("marker", "expected", "environment"),
+        [
+            pytest.param(
+                'os_name == "unix"',
+                'os_name == "unix"',
+                {"os_name": "unix"},
+                id="plain-string-no-escapes",
+            ),
+            pytest.param(
+                r'os_name == "a\\b"',
+                r'os_name == "a\\b"',
+                {"os_name": r"a\b"},
+                id="backslash",
+            ),
+            pytest.param(
+                "os_name == 'a\"b'",
+                "os_name == 'a\"b'",
+                {"os_name": 'a"b'},
+                id="double-quote-uses-single-quote-delimiter",
+            ),
+            pytest.param(
+                'os_name == "a\'b"',
+                'os_name == "a\'b"',
+                {"os_name": "a'b"},
+                id="single-quote-uses-double-quote-delimiter",
+            ),
+            pytest.param(
+                r'os_name == "a\\\\b"',
+                r'os_name == "a\\\\b"',
+                {"os_name": r"a\\b"},
+                id="consecutive-backslashes",
+            ),
+            pytest.param(
+                'os_name == ""',
+                'os_name == ""',
+                {"os_name": ""},
+                id="empty-string",
+            ),
+            pytest.param(
+                'os_name == "caf\u00e9 \u2603 \u4e2d\u6587"',
+                'os_name == "caf\u00e9 \u2603 \u4e2d\u6587"',
+                {"os_name": "caf\u00e9 \u2603 \u4e2d\u6587"},
+                id="unicode",
+            ),
+            pytest.param(
+                r'(os_name == "a\\b" or os_name == "other")'
+                r' and python_version >= "3.8"',
+                r'(os_name == "a\\b" or os_name == "other")'
+                r' and python_version >= "3.8"',
+                {"os_name": r"a\b", "python_version": "3.12"},
+                id="nested-and-or-with-backslash",
+            ),
+        ],
+    )
+    def test_serialize_then_parse_roundtrip(
+        self, marker: str, expected: str, environment: dict[str, str]
+    ) -> None:
+        original = Marker(marker)
+        assert str(original) == expected
+
+        reparsed = Marker(str(original))
+        assert str(reparsed) == str(original)
+        assert reparsed == original
+        assert reparsed.evaluate(environment) == original.evaluate(environment)
+        assert reparsed.evaluate(environment) is True
+
+
 class TestOperatorEvaluation:
     def test_prefers_pep440(self) -> None:
         assert Marker('"2.7.9" < python_full_version').evaluate(
